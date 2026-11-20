@@ -52,7 +52,7 @@ async function ustVivo() {
     if (t && Number.isFinite(y)) { pts.push([t, y]); if ((x.last_time || "") > hora) hora = x.last_time; }
   }
   if (pts.length < 6) throw new Error("CNBC: curva incompleta");
-  return { fuente: "CNBC (en vivo)", hora, pts };
+  return { fuente: "CNBC, en vivo", hora, pts };
 }
 
 const TES_PLAZO = { "1 Mo": 1 / 12, "1.5 Month": 1.5 / 12, "2 Mo": 2 / 12, "3 Mo": 0.25, "4 Mo": 4 / 12, "6 Mo": 0.5,
@@ -114,7 +114,7 @@ async function main() {
   const [arr, oficial, amb] = await Promise.all([json("https://data912.com/live/arg_bonds"), json("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais"), ambito()]);
   let ust;
   try { ust = await ustVivo(); }
-  catch { const h = await ustHistorico(new Date().getFullYear()); const u = h[h.length - 1]; ust = { fuente: "Tesoro de EE.UU. (cierre)", hora: u.fecha, pts: u.pts }; }
+  catch { const h = await ustHistorico(new Date().getFullYear()); const u = h[h.length - 1]; ust = { fuente: "Tesoro de EE.UU., cierre", hora: u.fecha, pts: u.pts }; }
 
   // en vivo
   const q = new Map();
