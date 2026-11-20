@@ -1,0 +1,33 @@
+name: Actualizar riesgo país
+
+on:
+  schedule:
+    # Rueda de BYMA: 11 a 17 h ART = 14 a 20 h UTC, lunes a viernes, cada 15 min (GitHub puede demorar unos minutos)
+    - cron: "*/15 14-20 * * 1-5"
+    # Noche: toma el cierre oficial (ArgentinaDatos lo publica después de las 19 h ART) y recalcula el histórico
+    - cron: "30 0,3 * * 2-6"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node actualizar.mjs
+      - name: Commit si cambió
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/riesgo_pais.json data/intradia.json
+          git diff --cached --quiet || (git commit -m "Datos $(date -u +%Y-%m-%dT%H:%MZ)" && git push)
