@@ -153,6 +153,31 @@ function curvaSVG(v) {
     <p class="stats">${inv}</p></div>`;
 }
 
+// Gráfico del día: una foto cada 15 min (data/intradia.json), de 11 a 17 h, con el cierre oficial anterior de referencia.
+function intradiaHTML(it) {
+  const pts = (it?.puntos || []).map((p) => {
+    const f = new Intl.DateTimeFormat("en-US", { timeZone: "America/Argentina/Buenos_Aires", hour: "numeric", minute: "numeric", hour12: false }).formatToParts(new Date(p.hora));
+    const g = Object.fromEntries(f.map((x) => [x.type, x.value]));
+    return { min: (Number(g.hour) % 24) * 60 + Number(g.minute), rp: p.rp, hora: p.hora };
+  }).filter((p) => p.min >= 650 && p.min <= 1050 && Number.isFinite(p.rp));
+  const titulo = `<div class="titulo">Durante la rueda${it?.fecha ? ` · ${ddmmaa(it.fecha)}` : ""}</div>`;
+  if (pts.length < 2) return `<div class="card">${titulo}<p class="nota">Todavía no hay fotos de la rueda: se guarda una cada 15 minutos entre las 11 y las 17 h.</p></div>`;
+  const W = 1200, H = 300, pad = { l: 58, r: 70, t: 18, b: 34 }, ref = it.cierreAnterior?.valor;
+  const ys = pts.map((p) => p.rp).concat(ref ? [ref] : []);
+  const sy = nice(Math.min(...ys) - 10, Math.max(...ys) + 10, 5);
+  const X = (m) => pad.l + (m - 660) / 360 * (W - pad.l - pad.r), Y = (y) => pad.t + (1 - (y - sy.lo) / (sy.hi - sy.lo)) * (H - pad.t - pad.b);
+  const ult = pts[pts.length - 1];
+  return `<div class="card">${titulo}
+    <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Réplica del riesgo país durante la rueda">
+    ${sy.ticks.map((t) => `<line x1="${pad.l}" y1="${Y(t)}" x2="${W - pad.r}" y2="${Y(t)}" stroke="var(--border)"/><text x="${pad.l - 8}" y="${Y(t) + 4}" fill="var(--muted)" font-size="12" text-anchor="end">${fmt(t)}</text>`).join("")}
+    ${[11, 12, 13, 14, 15, 16, 17].map((h) => `<text x="${X(h * 60)}" y="${H - 12}" fill="var(--muted)" font-size="12" text-anchor="middle">${h} h</text>`).join("")}
+    ${ref ? `<line x1="${pad.l}" y1="${Y(ref)}" x2="${W - pad.r}" y2="${Y(ref)}" stroke="var(--celeste)" stroke-dasharray="5 5"/><text x="${W - pad.r}" y="${Y(ref) + 16}" fill="var(--celeste)" font-size="12" text-anchor="end">Cierre oficial ${ddmmaa(it.cierreAnterior.fecha)}: ${fmt(ref)}</text>` : ""}
+    <path d="${pts.map((p, i) => `${i ? "L" : "M"}${X(p.min).toFixed(1)},${Y(p.rp).toFixed(1)}`).join("")}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+    ${pts.map((p) => `<circle cx="${X(p.min).toFixed(1)}" cy="${Y(p.rp).toFixed(1)}" r="4" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"><title>${horaAR(p.hora)} h: ${fmt(p.rp)} pb</title></circle>`).join("")}
+    <text x="${X(ult.min) + 10}" y="${Y(ult.rp) + 4}" fill="var(--text)" font-size="12">${fmt(ult.rp)}</text></svg>
+    <p class="nota">Réplica sin corregir, una foto cada 15 minutos (GitHub puede demorar algunos minutos). La línea punteada es el último cierre oficial.</p></div>`;
+}
+
 function historiaSVG(serie) {
   const W = 1200, H = 340, pad = { l: 58, r: 16, t: 26, b: 34 }, n = serie.length;
   const vals = serie.flatMap((x) => [x.oficial, x.replica]), sy = nice(Math.min(...vals) - 20, Math.max(...vals) + 20, 5);
@@ -183,7 +208,8 @@ async function cargar() {
     const r = await fetch("data/riesgo_pais.json?t=" + Date.now(), { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const d = await r.json(), serie = d.historia.slice(-120), c = d.calibracion;
-    document.getElementById("app").innerHTML = kpis(d) + tabla(d.vivo) + curvaSVG(d.vivo) +
+    const it = await fetch("data/intradia.json?t=" + Date.now(), { cache: "no-store" }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+    document.getElementById("app").innerHTML = kpis(d) + intradiaHTML(it) + tabla(d.vivo) + curvaSVG(d.vivo) +
       `<div class="card"><div class="titulo">Oficial vs. réplica, últimas ${serie.length} ruedas</div>
         <div class="rel">${historiaSVG(serie)}<div class="cross" hidden></div><div class="tip" hidden></div></div>
         <div class="leyenda"><span><i style="background:var(--celeste)"></i>Oficial (J.P. Morgan, vía ArgentinaDatos)</span><span><i style="background:var(--accent)"></i>Réplica al cierre</span></div>

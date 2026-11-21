@@ -156,12 +156,20 @@ async function main() {
   };
   fs.writeFileSync(ARCHIVO, JSON.stringify(salida));
 
-  // fotos del día (hora argentina), para el gráfico intradiario
-  const hoyAR = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
-  const intra = leer(INTRADIA, {});
-  const puntos = intra.fecha === hoyAR ? intra.puntos : [];
-  puntos.push({ hora: ahora, rp: vivo.rp, corregida: vivo.corregida });
-  fs.writeFileSync(INTRADIA, JSON.stringify({ fecha: hoyAR, puntos }));
+  // Fotos del día para el gráfico intradiario: solo en horario de rueda (10:55 a 17:20 ART, lun-vie). Fuera de
+  // horario no se toca el archivo, así el gráfico del último día queda hasta la primera foto de la rueda siguiente.
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "numeric", minute: "numeric", hour12: false })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]));
+  const hoyAR = `${p.year}-${p.month}-${p.day}`, minAR = (Number(p.hour) % 24) * 60 + Number(p.minute);
+  if (!["Sat", "Sun"].includes(p.weekday) && minAR >= 655 && minAR <= 1040) {
+    const intra = leer(INTRADIA, {});
+    const nuevo = intra.fecha !== hoyAR;
+    const puntos = nuevo ? [] : intra.puntos;
+    puntos.push({ hora: ahora, rp: vivo.rp, corregida: vivo.corregida });
+    // cierre oficial anterior (referencia del gráfico): el último oficial con fecha anterior a hoy
+    const previo = oficial.filter((x) => x.valor > 0 && x.fecha < hoyAR).at(-1);
+    fs.writeFileSync(INTRADIA, JSON.stringify({ fecha: hoyAR, cierreAnterior: previo ? { valor: previo.valor, fecha: previo.fecha } : null, puntos }));
+  }
 
   console.log(`réplica ${vivo.rp} pb (corregida ${vivo.corregida}) · oficial ${ultOficial.valor} del ${ultOficial.fecha} · CCL ${vivo.ccl.valor} · ${ust.fuente}`);
 }
