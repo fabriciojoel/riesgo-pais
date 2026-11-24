@@ -6,7 +6,7 @@
 // 6 Globales ley NY, precio en dólar cable (pesos ÷ CCL implícito AL30/GD30), Z-spread sobre la curva cero
 // del Tesoro de EE.UU. y promedio ponderado por valor de mercado × duration.
 import fs from "node:fs";
-import { GLOBALES, curvaCero, calcularReplica, cclImplicito, calibracion } from "./motor/riesgopais_calc.js";
+import { GLOBALES, curvaCero, calcularReplica, cclImplicito, preciosGlobales, calibracion } from "./motor/riesgopais_calc.js";
 import { liquidacion } from "./motor/flujo.js";
 
 const UA = { "User-Agent": "Mozilla/5.0 (compatible; riesgo-pais/1.0)" };
@@ -124,15 +124,9 @@ async function main() {
   const ccl = cclImplicito(px);
   if (!ccl) throw new Error("sin CCL implícito");
   const curva = curvaCero(ust.pts.map(([t, y]) => [t, y / 100]));
-  // Un Global sin precio usable (no operó y una sola punta o puntas muy separadas, como GD46 el 24/11/2026)
-  // entra con su cierre anterior en vez de tumbar toda la réplica (mismo criterio que clubfci2).
-  const pesos = Object.fromEntries(GLOBALES.map((t) => {
-    const p = px(t);
-    if (p > 0) return [t, p];
-    const x = q.get(t);
-    if (x && x.cierre > 0) { q.set(t, { ...x, last: x.cierre, tipo: `cierre anterior (${x.tipo})` }); return [t, x.cierre]; }
-    return [t, null];
-  }));
+  // Pesos en vivo → línea D × MEP implícito → cierre anterior (preciosGlobales del motor, igual que clubfci2).
+  const { pesos, origen } = preciosGlobales(q);
+  for (const t of GLOBALES) if (pesos[t] > 0) q.set(t, { ...(q.get(t) || {}), last: pesos[t], tipo: origen[t], operado: origen[t] === "operado" });
   const r = calcularReplica({ terminos, pesos, ccl: ccl.valor, curva, liq: liquidacion(new Date()) });
   if (!r) throw new Error("faltan precios de algún Global");
 

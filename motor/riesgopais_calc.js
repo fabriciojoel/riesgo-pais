@@ -161,6 +161,42 @@ export function cclImplicito(px, pares = PARES_CCL) {
   return { valor: out.reduce((s, p) => s + p.valor, 0) / out.length, pares: out };
 }
 
+// MEP implícito (pesos por dólar MEP) = precio en pesos / precio en línea D, promedio de los pares.
+export function mepImplicito(px, pares = PARES_CCL) {
+  const out = [];
+  for (const base of pares) {
+    const pesos = px(base), mep = px(base + "D");
+    if (pesos > 0 && mep > 0) out.push({ par: base, valor: pesos / mep });
+  }
+  if (!out.length) return null;
+  return { valor: out.reduce((s, p) => s + p.valor, 0) / out.length, pares: out };
+}
+
+/**
+ * Precio en pesos de cada Global, en este orden (pedido de Fabricio, 24/11/2026):
+ *   1. el de pesos en vivo (operado hoy o punta media razonable);
+ *   2. si no hay, el de la línea D en vivo pasado a pesos con el MEP implícito (D × MEP);
+ *   3. si tampoco, el cierre anterior en pesos.
+ * Una sola punta o puntas separadas más de un 5% no cuentan como precio en vivo.
+ * @param q  Map símbolo → {last, tipo, soloPunta, cierre} (precioData912 de data912 /live/arg_bonds)
+ * @returns {pesos: {GD29: …}, origen: {GD29: "operado" | "línea D …" | "cierre anterior …"}, mep}
+ */
+export function preciosGlobales(q) {
+  const vivo = (s) => { const x = q.get(s); return x && !x.soloPunta && x.tipo !== "cierre anterior" && x.last > 0 ? x.last : null; };
+  const usable = (s) => { const x = q.get(s); return x && !x.soloPunta && x.last > 0 ? x.last : null; };
+  const mep = mepImplicito(usable);
+  const pesos = {}, origen = {};
+  for (const t of GLOBALES) {
+    const x = q.get(t);
+    const p = vivo(t), d = vivo(t + "D");
+    if (p) { pesos[t] = p; origen[t] = x.tipo; }
+    else if (d && mep) { pesos[t] = d * mep.valor; origen[t] = `línea D: ${t}D ${d} × MEP ${mep.valor.toFixed(1)}`; }
+    else if (x && x.cierre > 0) { pesos[t] = x.cierre; origen[t] = `cierre anterior${x.tipo && x.tipo !== "cierre anterior" ? ` (${x.tipo})` : ""}`; }
+    else pesos[t] = null;
+  }
+  return { pesos, origen, mep };
+}
+
 /**
  * Réplica completa de un día o del momento.
  * @param terminos  {GD29: terminos, …} (los `generado` del universo)
