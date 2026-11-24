@@ -31,12 +31,13 @@ async function texto(url) {
 function precioData912(x) {
   const bid = x.px_bid > 0 ? x.px_bid : null, ask = x.px_ask > 0 ? x.px_ask : null;
   const operado = x.v > 0 && x.c > 0;
-  if (operado) return { last: x.c, tipo: "operado", operado, soloPunta: false };
+  const cierre = x.c > 0 ? x.c : null;
+  if (operado) return { last: x.c, tipo: "operado", operado, soloPunta: false, cierre };
   if (bid != null && ask != null) {
     const last = (bid + ask) / 2;
-    return { last, tipo: (ask - bid) / last > 0.05 ? "puntas muy separadas" : "punta media", operado, soloPunta: (ask - bid) / last > 0.05 };
+    return { last, tipo: (ask - bid) / last > 0.05 ? "puntas muy separadas" : "punta media", operado, soloPunta: (ask - bid) / last > 0.05, cierre };
   }
-  if (bid != null || ask != null) return { last: bid ?? ask, tipo: "una sola punta", operado, soloPunta: true };
+  if (bid != null || ask != null) return { last: bid ?? ask, tipo: "una sola punta", operado, soloPunta: true, cierre };
   if (x.c > 0) return { last: x.c, tipo: "cierre anterior", operado, soloPunta: false };
   return null;
 }
@@ -123,7 +124,16 @@ async function main() {
   const ccl = cclImplicito(px);
   if (!ccl) throw new Error("sin CCL implícito");
   const curva = curvaCero(ust.pts.map(([t, y]) => [t, y / 100]));
-  const r = calcularReplica({ terminos, pesos: Object.fromEntries(GLOBALES.map((t) => [t, px(t)])), ccl: ccl.valor, curva, liq: liquidacion(new Date()) });
+  // Un Global sin precio usable (no operó y una sola punta o puntas muy separadas, como GD46 el 24/11/2026)
+  // entra con su cierre anterior en vez de tumbar toda la réplica (mismo criterio que clubfci2).
+  const pesos = Object.fromEntries(GLOBALES.map((t) => {
+    const p = px(t);
+    if (p > 0) return [t, p];
+    const x = q.get(t);
+    if (x && x.cierre > 0) { q.set(t, { ...x, last: x.cierre, tipo: `cierre anterior (${x.tipo})` }); return [t, x.cierre]; }
+    return [t, null];
+  }));
+  const r = calcularReplica({ terminos, pesos, ccl: ccl.valor, curva, liq: liquidacion(new Date()) });
   if (!r) throw new Error("faltan precios de algún Global");
 
   // histórico: se recalcula solo si hay un cierre oficial nuevo (o no hay histórico)
