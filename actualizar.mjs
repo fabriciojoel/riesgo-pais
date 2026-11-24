@@ -32,13 +32,13 @@ function precioData912(x) {
   const bid = x.px_bid > 0 ? x.px_bid : null, ask = x.px_ask > 0 ? x.px_ask : null;
   const operado = x.v > 0 && x.c > 0;
   const cierre = x.c > 0 ? x.c : null;
-  if (operado) return { last: x.c, tipo: "operado", operado, soloPunta: false, cierre };
+  if (operado) return { last: x.c, tipo: "operado", operado, soloPunta: false, cierre, bid };
   if (bid != null && ask != null) {
     const last = (bid + ask) / 2;
-    return { last, tipo: (ask - bid) / last > 0.05 ? "puntas muy separadas" : "punta media", operado, soloPunta: (ask - bid) / last > 0.05, cierre };
+    return { last, tipo: (ask - bid) / last > 0.05 ? "puntas muy separadas" : "punta media", operado, soloPunta: (ask - bid) / last > 0.05, cierre, bid };
   }
-  if (bid != null || ask != null) return { last: bid ?? ask, tipo: "una sola punta", operado, soloPunta: true, cierre };
-  if (x.c > 0) return { last: x.c, tipo: "cierre anterior", operado, soloPunta: false };
+  if (bid != null || ask != null) return { last: bid ?? ask, tipo: "una sola punta", operado, soloPunta: true, cierre, bid };
+  if (x.c > 0) return { last: x.c, tipo: "cierre anterior", operado, soloPunta: false, cierre, bid };
   return null;
 }
 
@@ -124,8 +124,8 @@ async function main() {
   const ccl = cclImplicito(px);
   if (!ccl) throw new Error("sin CCL implícito");
   const curva = curvaCero(ust.pts.map(([t, y]) => [t, y / 100]));
-  // Pesos en vivo → línea D × MEP implícito → cierre anterior (preciosGlobales del motor, igual que clubfci2).
-  const { pesos, origen } = preciosGlobales(q);
+  // Pesos en vivo → línea C (operado o punta compradora) × CCL → cierre anterior (preciosGlobales del motor, igual que clubfci2).
+  const { pesos, origen } = preciosGlobales(q, ccl.valor);
   for (const t of GLOBALES) if (pesos[t] > 0) q.set(t, { ...(q.get(t) || {}), last: pesos[t], tipo: origen[t], operado: origen[t] === "operado" });
   const r = calcularReplica({ terminos, pesos, ccl: ccl.valor, curva, liq: liquidacion(new Date()) });
   if (!r) throw new Error("faltan precios de algún Global");
